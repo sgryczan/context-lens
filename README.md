@@ -53,7 +53,7 @@ Aliases: `cc` → `claude`, `cx` → `codex`, `gm` → `gemini`. For `pi`, add `
 
 ## Configuration
 
-Persistent settings live in `~/.context-lens/config.toml`. CLI flags always override config file values. The file is not created automatically — create it yourself if you want to set defaults.
+Persistent settings live in `~/.context-lens/config.toml`. CLI flags always override config file values. The file is not created automatically; create it if you want persistent defaults.
 
 ```toml
 # Context Lens configuration
@@ -207,9 +207,7 @@ If you prefer to configure it manually, set `baseUrl` in `~/.pi/agent/models.jso
 
 ### Redaction
 
-The `--redact` flag strips sensitive values from requests before they are written to disk. This is useful if you share captures with others or export LHAR files and want to remove credentials, secrets, or personal data.
-
-Three presets are available:
+The `--redact` flag strips sensitive values from requests before they are written to disk, useful when sharing captures or exporting LHAR files.
 
 | Preset | What it removes |
 | :--- | :--- |
@@ -223,13 +221,13 @@ context-lens --redact=pii claude      # broader PII removal
 context-lens --redact=strict claude   # maximum removal
 ```
 
-Redaction is **reversible by default**: redacted values are stored alongside the capture so they can be rehydrated when you view the session in the UI. To make redaction permanent (one-way), add `--no-rehydrate`:
+Redaction is **reversible by default**: redacted values are stored alongside the capture and rehydrated on load. To make it permanent, add `--no-rehydrate`:
 
 ```bash
 context-lens --redact=strict --no-rehydrate claude
 ```
 
-To always redact without typing the flag every time, set it in `~/.context-lens/config.toml`:
+To always redact, set it in `~/.context-lens/config.toml`:
 
 ```toml
 [proxy]
