@@ -43,6 +43,9 @@ if (parsedArgs.showVersion) {
 if (parsedArgs.privacyLevel !== undefined) {
   process.env.CONTEXT_LENS_PRIVACY = parsedArgs.privacyLevel;
 }
+if (parsedArgs.redactPreset !== undefined) {
+  process.env.CONTEXT_LENS_REDACT = parsedArgs.redactPreset;
+}
 if (
   !parsedArgs.noUpdateCheck &&
   process.env.CONTEXT_LENS_NO_UPDATE_CHECK !== "1"

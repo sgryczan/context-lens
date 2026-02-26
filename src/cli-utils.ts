@@ -22,6 +22,13 @@ const COMMAND_ALIASES: Record<string, string> = {
 const KNOWN_PRIVACY_LEVELS = ["minimal", "standard", "full"] as const;
 type PrivacyLevel = (typeof KNOWN_PRIVACY_LEVELS)[number];
 
+const KNOWN_REDACT_PRESETS = ["secrets", "pii", "strict"] as const;
+type RedactPreset = (typeof KNOWN_REDACT_PRESETS)[number];
+
+function isRedactPreset(value: string): value is RedactPreset {
+  return (KNOWN_REDACT_PRESETS as readonly string[]).includes(value);
+}
+
 export interface ParsedCliArgs {
   showHelp: boolean;
   showVersion: boolean;
@@ -30,6 +37,7 @@ export interface ParsedCliArgs {
   noUpdateCheck: boolean;
   useMitm: boolean;
   privacyLevel?: string;
+  redactPreset?: RedactPreset;
   commandName?: string;
   commandArguments: string[];
   error?: string;
@@ -144,6 +152,7 @@ export function parseCliArgs(args: string[]): ParsedCliArgs {
   let noUpdateCheck = false;
   let useMitm = false;
   let privacyLevel: string | undefined;
+  let redactPreset: RedactPreset | undefined;
   let explicitSeparator = false;
   let commandStartIndex = -1;
   for (let i = 0; i < args.length; i++) {
@@ -179,6 +188,27 @@ export function parseCliArgs(args: string[]): ParsedCliArgs {
     }
     if (arg === "--mitm") {
       useMitm = true;
+      continue;
+    }
+    if (arg === "--redact") {
+      redactPreset = "secrets";
+      continue;
+    }
+    if (arg.startsWith("--redact=")) {
+      const value = arg.split("=", 2)[1];
+      if (!isRedactPreset(value)) {
+        return {
+          showHelp,
+          showVersion,
+          noOpen,
+          noUi,
+          noUpdateCheck,
+          useMitm,
+          commandArguments: [],
+          error: `Error: Invalid redact preset '${value}'. Must be one of: ${KNOWN_REDACT_PRESETS.join(", ")}`,
+        };
+      }
+      redactPreset = value;
       continue;
     }
     if (arg === "--privacy") {
@@ -243,6 +273,7 @@ export function parseCliArgs(args: string[]): ParsedCliArgs {
       noUpdateCheck,
       useMitm,
       privacyLevel,
+      redactPreset,
       commandArguments: [],
       error: "Error: No command specified after --",
     };
@@ -256,6 +287,7 @@ export function parseCliArgs(args: string[]): ParsedCliArgs {
     noUpdateCheck,
     useMitm,
     privacyLevel,
+    redactPreset,
     commandName,
     commandArguments,
   };
@@ -297,6 +329,7 @@ export function formatHelpText(): string {
     "  --no-ui                Run proxy only (no analysis/web UI server)",
     "  --no-update-check      Skip npm update check for this run",
     "  --mitm                 Use mitmproxy for interception instead of base URL override (pi only)",
+    "  --redact[=preset]      Strip sensitive data before capture (experimental). Preset: secrets|pii|strict (default: secrets)",
     "",
     "Command aliases:",
     "  cc -> claude",
