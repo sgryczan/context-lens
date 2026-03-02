@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { detectSource, parseContextInfo } from "../src/core.js";
+import { detectSource, PROVIDER_NAMES, parseContextInfo } from "../src/core.js";
 import {
   anthropicBasic,
   claudeSession,
@@ -60,5 +60,22 @@ describe("detectSource", () => {
     );
     const source = detectSource(info, null);
     assert.equal(source, "unknown");
+  });
+
+  it("treats 'bedrock' as a provider name, not a source tag", () => {
+    assert.ok(
+      PROVIDER_NAMES.has("bedrock"),
+      "'bedrock' should be in PROVIDER_NAMES",
+    );
+    // When source is 'bedrock', it should not short-circuit — header detection runs instead
+    const info = parseContextInfo(
+      "anthropic",
+      anthropicBasic,
+      "anthropic-messages",
+    );
+    const source = detectSource(info, "bedrock", {
+      "user-agent": "claude-cli/1.2.3",
+    });
+    assert.equal(source, "claude"); // detected from header, not returned as 'bedrock'
   });
 });
