@@ -1,0 +1,142 @@
+# Progress Log — AWS Bedrock Support for Context Lens
+Started: 2026-03-02
+
+## Architecture Decision
+Bedrock uses SigV4 request signing tied to the destination host, so reverse proxy (ANTHROPIC_BASE_URL override) is NOT viable — the proxy would receive a request signed for localhost, which Bedrock rejects. Use MITM interception instead (same pattern as Codex, Cline, OpenCode). Bedrock's invoke API uses the same request/response body format as Anthropic Messages API — reuse 'anthropic-messages' apiFormat, do NOT create a new one.
+
+## Codebase Patterns
+- Provider detection: src/core/routing.ts classifyRequest() — order matters, Bedrock goes AFTER Anthropic, BEFORE OpenAI
+- Request parsing: src/core/parse.ts parseContextInfo() — switch on provider/apiFormat
+- Types: src/types.ts — Provider and ApiFormat union types
+- Upstream URLs: src/proxy/config.ts — Upstreams interface, env vars UPSTREAM_*_URL
+- Source detection: src/core/source.ts — PROVIDER_NAMES set prevents provider names from being used as source tags
+- MITM addon: mitm_addon.py — CAPTURE_PATTERN list, _detect_api_format(), response() function
+- CLI tool config: src/cli-utils.ts — TOOL_CONFIG record with ToolConfig objects, needsMitm flag
+- CLI entry: src/cli.ts — tool config resolution, env var detection
+- Response parsing: src/lhar/response.ts — parseResponseUsage()
+- Ingestion: src/analysis/ingest.ts — model extraction from URL path
+- Tests: Node.js built-in test runner, `pnpm test`, fixtures in test/fixtures/
+- Build: `pnpm build`, Lint: `pnpm lint`
+- Keep changes minimal — don't refactor existing code unless the plan calls for it
+
+## Key Files
+- src/types.ts — Provider union type (add 'bedrock' between 'anthropic' and 'openai')
+- src/core/routing.ts — classifyRequest(), resolveTargetUrl(), API_PATH_SEGMENTS
+- src/core/parse.ts — parseContextInfo() line ~207 has the anthropic provider check
+- src/core/source.ts — PROVIDER_NAMES set (~line 40-45)
+- src/core/models.ts — model pricing re-exports, good place for normalizeBedrockModelId()
+- src/proxy/config.ts — Upstreams interface
+- src/lhar/response.ts — parseResponseUsage()
+- src/analysis/ingest.ts — model extraction from URL
+- src/cli-utils.ts — TOOL_CONFIG, ToolConfig interface, parseCliArgs()
+- src/cli.ts — tool config resolution logic
+- mitm_addon.py — CAPTURE_PATTERN (~line 38-52), _detect_api_format() (~line 80-90), response()
+- test/routing.test.ts — provider/format detection tests
+- test/context-parse.test.ts — parsing tests
+- test/cli-utils.test.ts — CLI flag/config tests
+
+## Bedrock API Reference
+- Invoke: POST /model/{modelId}/invoke (same body as Anthropic Messages API)
+- Converse: POST /model/{modelId}/converse
+- Stream: POST /model/{modelId}/invoke-with-response-stream (returns application/vnd.amazon.eventstream)
+- Auth: AWS SigV4 — authorization header starts with 'AWS4-HMAC-SHA256'
+- Regional endpoints: bedrock-runtime.{region}.amazonaws.com
+- Model IDs: anthropic.claude-3-5-sonnet-20241022-v2:0, us.anthropic.claude-sonnet-4-20250514-v1:0
+- Normalization: strip region prefix (us.), vendor prefix (anthropic.), version suffix (-v1:0)
+- EventStream binary format: [4B total_len][4B headers_len][4B prelude_crc][headers][payload][4B message_crc]
+- Env vars that signal Bedrock usage: CLAUDE_CODE_USE_BEDROCK=1, ANTHROPIC_BEDROCK_BASE_URL
+
+## History
+
+## 2026-03-02 - US-001
+- Added 'bedrock' to Provider union type in src/types.ts between 'anthropic' and 'openai'
+- No new ApiFormat added — Bedrock reuses 'anthropic-messages'
+- Files changed: src/types.ts
+- **Learnings:**
+  - pnpm needed to be installed via corepack (`corepack enable && corepack prepare pnpm@latest --activate`)
+  - `pnpm install` required before first build (node_modules missing)
+  - Pre-commit hook runs biome lint — existing codebase has 109 lint warnings (all pre-existing `noExplicitAny`), but they don't block commits
+  - Build: 504 tests, all passing
+---
+
+## 2026-03-02 - US-002
+- Added 'model' to API_PATH_SEGMENTS so /model/{id}/invoke isn't treated as a source tag
+- Added Bedrock detection in classifyRequest() after Anthropic, before OpenAI — path regex + SigV4 header
+- Added Bedrock case in resolveTargetUrl() routing to upstreams.bedrock
+- Added 'bedrock' field to Upstreams interface in src/types.ts and default URL in src/proxy/config.ts
+- Added 6 new routing tests (detect invoke path, converse path, SigV4 header, apiFormat, resolveTargetUrl, model in API_PATH_SEGMENTS)
+- Files changed: src/core/routing.ts, src/types.ts, src/proxy/config.ts, test/routing.test.ts, test/gemini.test.ts, test/proxy-forward.test.ts, test/proxy-routing.test.ts
+- **Learnings:**
+  - src/proxy/config.ts imports Upstreams from @contextio/core (npm package), not local types — had to change import to ../types.js since the published package doesn't have 'bedrock' yet
+  - Same issue in test/proxy-forward.test.ts and test/proxy-routing.test.ts — they import Upstreams from @contextio/core
+  - All test files that construct Upstreams objects need the bedrock field added (4 files total)
+  - Biome pre-commit hook catches import ordering and formatting issues — run `npx biome check --write` on changed files before committing
+  - Build: 510 tests, all passing
+---
+
+## 2026-03-02 - US-003
+- Changed provider check in parse.ts line 207 to include 'bedrock': `if (provider === 'anthropic' || provider === 'bedrock')`
+- Added Bedrock model ID normalization before totalTokens calculation: strips region prefix, vendor prefix, version suffix
+- Added Bedrock model extraction from URL path in ingest.ts (mirrors Gemini pattern): `/model/{modelId}/invoke`
+- Added 5 new tests in context-parse.test.ts: bedrock body parsing, 3 normalization formats, standard ID passthrough
+- Files changed: src/core/parse.ts, src/analysis/ingest.ts, test/context-parse.test.ts
+- **Learnings:**
+  - The anthropic provider branch in parse.ts handles all anthropic-format bodies — bedrock just piggybacks with `||`
+  - Model normalization placement matters: must be AFTER `info.model = body.model` but BEFORE totalTokens calc
+  - ingest.ts extracts model from URL path for providers that don't put it in the body (same pattern as Gemini)
+  - Regex chain `.replace(/^[a-z]{2}\./, '').replace(/^anthropic\./, '').replace(/-v\d+:\d+$/, '')` handles all Bedrock model ID formats
+  - Build: 515 tests, all passing
+---
+
+## 2026-03-02 - US-004
+- Added 'bedrock' to PROVIDER_NAMES set in src/core/source.ts (between 'anthropic' and 'openai')
+- Added test in test/source.test.ts verifying 'bedrock' is treated as a provider name and doesn't bypass header detection
+- Files changed: src/core/source.ts, test/source.test.ts
+- **Learnings:**
+  - PROVIDER_NAMES prevents early return but the function's fallback (`return source || "unknown"`) still returns the original source value if no header/prompt matches — the test must verify that header detection overrides the provider source, not that the result is "unknown"
+  - PROVIDER_NAMES is already exported from src/core.ts, can be imported directly in tests
+  - Biome auto-fix reorders named imports alphabetically — run `npx biome check --write` before committing
+  - Build: 516 tests, all passing
+---
+
+## 2026-03-02 - US-005
+- Added Bedrock CAPTURE_PATTERN: ('bedrock-runtime.', '/model/', 'bedrock', None) before catch-all patterns
+- Added Bedrock detection in _detect_api_format(): /model/ + /invoke or /converse → 'anthropic-messages'
+- Added _parse_aws_eventstream() function for AWS EventStream binary format parsing (struct.unpack big-endian, base64 decode)
+- Added EventStream content type detection in response(): 'application/vnd.amazon.eventstream' branch uses raw_content instead of get_text()
+- Added Bedrock response headers to allowlist: x-amzn-requestid, x-amzn-bedrock-invocation-latency, x-amzn-bedrock-input-token-count, x-amzn-bedrock-output-token-count
+- Added imports for base64 and struct modules
+- Files changed: mitm_addon.py
+- **Learnings:**
+  - EventStream parsing must use flow.response.raw_content (bytes) not get_text() — binary format can't be decoded as text
+  - The Bedrock pattern must come AFTER specific provider patterns (Gemini, etc.) but BEFORE catch-all path patterns
+  - No TypeScript test changes needed — mitm_addon.py is Python and tested independently; the pnpm test suite validates the TS codebase isn't broken
+  - Build: 516 tests, all passing
+---
+
+## 2026-03-02 - US-006
+- Created shared `normalizeBedrockModelId()` helper in src/core/models.ts — detects Bedrock IDs by checking for "anthropic." substring, strips region prefix, vendor prefix, and version suffix
+- Exported from src/core.ts barrel
+- Refactored src/core/parse.ts to use the shared helper instead of inline regex chain
+- Added normalization to src/lhar/response.ts in both non-streaming and streaming code paths of parseResponseUsage()
+- Added 10 new tests in test/lhar.test.ts: 6 for normalizeBedrockModelId helper (3 format variants + 3 pass-through cases), 4 for response normalization (non-streaming, region prefix, streaming, standard pass-through)
+- Files changed: src/core/models.ts, src/core.ts, src/core/parse.ts, src/lhar/response.ts, test/lhar.test.ts
+- **Learnings:**
+  - The helper uses `modelId.includes("anthropic.")` as the guard so standard Anthropic IDs (which don't contain "anthropic.") pass through unchanged — this is cleaner than checking provider context
+  - Response normalization must be applied in both non-streaming return and streaming return paths — the streaming path delegates to parseStreamingUsage() which returns directly, so normalization must be applied to its result
+  - Build: 526 tests, all passing
+---
+
+## 2026-03-02 - US-007
+- Added `useBedrock: boolean` field to `ParsedCliArgs` interface in src/cli-utils.ts
+- Added `--bedrock` flag parsing in `parseCliArgs()` — sets `useBedrock = true`
+- Added Bedrock env var auto-detection in src/cli.ts: checks `parsedArgs.useBedrock`, `CLAUDE_CODE_USE_BEDROCK=1`, or `ANTHROPIC_BEDROCK_BASE_URL` — when triggered and command is 'claude', overrides config to MITM mode
+- Updated help text with Bedrock examples and `--bedrock` global option
+- Added 3 new tests in test/cli-utils.test.ts: --bedrock flag parsing, default false, combined with other flags
+- Files changed: src/cli-utils.ts, src/cli.ts, test/cli-utils.test.ts
+- **Learnings:**
+  - `ParsedCliArgs` is a non-optional boolean interface — `useBedrock` must be included in ALL return paths (5 error paths + 1 success path)
+  - The Bedrock override in cli.ts follows the same pattern as the pi MITM override — placed right after it
+  - Env var detection (`process.env.*`) goes in cli.ts (not cli-utils.ts) because cli-utils.ts is unit-testable without process.env side effects
+  - Build: 529 tests, all passing
+---

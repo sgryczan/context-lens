@@ -1,4 +1,5 @@
 import type { ContentBlock, ContextInfo, ParsedMessage } from "../types.js";
+import { normalizeBedrockModelId } from "./models.js";
 import { estimateTokens } from "./tokens.js";
 
 /**
@@ -204,7 +205,7 @@ export function parseContextInfo(
 
   const model = info.model;
 
-  if (provider === "anthropic") {
+  if (provider === "anthropic" || provider === "bedrock") {
     if (body.system) {
       const systemText =
         typeof body.system === "string"
@@ -388,6 +389,11 @@ export function parseContextInfo(
       info.tools = body.functions;
       info.toolsTokens = estimateTokens(JSON.stringify(body.functions), model);
     }
+  }
+
+  // Normalize Bedrock model IDs: strip region prefix, vendor prefix, version suffix
+  if (provider === "bedrock") {
+    info.model = normalizeBedrockModelId(info.model);
   }
 
   info.totalTokens = info.systemTokens + info.toolsTokens + info.messagesTokens;

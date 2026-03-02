@@ -344,6 +344,7 @@ describe("Gemini support", () => {
       gemini: "https://generativelanguage.googleapis.com",
       geminiCodeAssist: "https://cloudcode-pa.googleapis.com",
       vertex: "https://us-central1-aiplatform.googleapis.com",
+      bedrock: "https://bedrock-runtime.us-east-1.amazonaws.com",
     };
 
     it("routes standard gemini paths", () => {

@@ -24,6 +24,7 @@ export const API_PATH_SEGMENTS = new Set([
   "embeddings",
   "backend-api",
   "api",
+  "model",
 ]);
 
 /**
@@ -68,6 +69,14 @@ export function classifyRequest(
     return { provider: "anthropic", apiFormat: "unknown" };
   if (headers["anthropic-version"])
     return { provider: "anthropic", apiFormat: "unknown" };
+
+  // AWS Bedrock: must come AFTER Anthropic (so /v1/messages routes to anthropic)
+  // and BEFORE OpenAI (which matches /models/).
+  // Detects: /model/{id}/invoke, /model/{id}/converse, or SigV4 auth header.
+  if (pathname.match(/\/model\/[^/]+\/(invoke|converse)/))
+    return { provider: "bedrock", apiFormat: "anthropic-messages" };
+  if (headers.authorization?.startsWith("AWS4-HMAC-SHA256"))
+    return { provider: "bedrock", apiFormat: "anthropic-messages" };
 
   // Vertex AI: must come BEFORE Gemini (Vertex paths also contain :generateContent)
   // Matches /v1beta1/projects/{project}/locations/{location}/publishers/google/models/{model}:generateContent
@@ -167,6 +176,8 @@ export function resolveTargetUrl(
       targetUrl = upstreams.chatgpt + parsedUrl.pathname + search;
     } else if (provider === "anthropic") {
       targetUrl = upstreams.anthropic + parsedUrl.pathname + search;
+    } else if (provider === "bedrock") {
+      targetUrl = upstreams.bedrock + parsedUrl.pathname + search;
     } else if (provider === "gemini") {
       const isCodeAssist = parsedUrl.pathname.includes("/v1internal");
       targetUrl =

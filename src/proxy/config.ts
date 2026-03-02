@@ -7,7 +7,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import type { Upstreams } from "@contextio/core";
+import type { Upstreams } from "../types.js";
 
 export interface ProxyConfig {
   upstreams: Upstreams;
@@ -34,6 +34,9 @@ export function loadProxyConfig(): ProxyConfig {
     vertex:
       process.env.UPSTREAM_VERTEX_URL ||
       "https://us-central1-aiplatform.googleapis.com",
+    bedrock:
+      process.env.UPSTREAM_BEDROCK_URL ||
+      "https://bedrock-runtime.us-east-1.amazonaws.com",
   };
 
   // Bind only to localhost unless explicitly overridden.

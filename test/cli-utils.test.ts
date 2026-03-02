@@ -111,5 +111,33 @@ describe("cli-utils", () => {
     assert.match(help, /background <start\|stop\|status>/);
     assert.match(help, /cc -> claude/);
     assert.match(help, /cpi/);
+    assert.match(help, /--bedrock/);
+  });
+
+  it("parses --bedrock flag", () => {
+    const parsed = parseCliArgs(["--bedrock", "claude"]);
+    assert.equal(parsed.error, undefined);
+    assert.equal(parsed.useBedrock, true);
+    assert.equal(parsed.commandName, "claude");
+  });
+
+  it("defaults useBedrock to false when not specified", () => {
+    const parsed = parseCliArgs(["claude"]);
+    assert.equal(parsed.error, undefined);
+    assert.equal(parsed.useBedrock, false);
+  });
+
+  it("combines --bedrock with other flags", () => {
+    const parsed = parseCliArgs([
+      "--bedrock",
+      "--no-open",
+      "claude",
+      "--print",
+    ]);
+    assert.equal(parsed.error, undefined);
+    assert.equal(parsed.useBedrock, true);
+    assert.equal(parsed.noOpen, true);
+    assert.equal(parsed.commandName, "claude");
+    assert.deepEqual(parsed.commandArguments, ["--print"]);
   });
 });

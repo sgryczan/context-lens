@@ -39,6 +39,7 @@ export const SOURCE_SIGNATURES: SourceSignature[] = [
 // When we see one, fall through to header/system-prompt detection.
 export const PROVIDER_NAMES = new Set([
   "anthropic",
+  "bedrock",
   "openai",
   "gemini",
   "chatgpt",

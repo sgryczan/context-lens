@@ -75,6 +75,36 @@ describe("detectProvider", () => {
       "vertex",
     );
   });
+
+  it("detects bedrock from /model/{id}/invoke path", () => {
+    assert.equal(
+      detectProvider(
+        "/model/anthropic.claude-3-5-sonnet-20241022-v2:0/invoke",
+        {},
+      ),
+      "bedrock",
+    );
+  });
+
+  it("detects bedrock from /model/{id}/converse path", () => {
+    assert.equal(
+      detectProvider(
+        "/model/anthropic.claude-3-haiku-20240307-v1:0/converse",
+        {},
+      ),
+      "bedrock",
+    );
+  });
+
+  it("detects bedrock from SigV4 auth header", () => {
+    assert.equal(
+      detectProvider("/some/path", {
+        authorization:
+          "AWS4-HMAC-SHA256 Credential=AKID/20260301/us-east-1/bedrock/aws4_request",
+      }),
+      "bedrock",
+    );
+  });
 });
 
 describe("detectApiFormat", () => {
@@ -119,6 +149,22 @@ describe("detectApiFormat", () => {
       "gemini",
     );
   });
+
+  it("detects anthropic-messages format for Bedrock invoke path", () => {
+    assert.equal(
+      detectApiFormat(
+        "/model/anthropic.claude-3-5-sonnet-20241022-v2:0/invoke",
+      ),
+      "anthropic-messages",
+    );
+  });
+
+  it("detects anthropic-messages format for Bedrock converse path", () => {
+    assert.equal(
+      detectApiFormat("/model/anthropic.claude-3-haiku-20240307-v1:0/converse"),
+      "anthropic-messages",
+    );
+  });
 });
 
 describe("extractSource", () => {
@@ -151,6 +197,7 @@ describe("extractSource", () => {
       "embeddings",
       "backend-api",
       "api",
+      "model",
     ]) {
       const result = extractSource(`/${seg}/something`);
       assert.equal(result.source, null, `should not treat /${seg} as source`);
@@ -206,6 +253,7 @@ describe("resolveTargetUrl", () => {
     gemini: "https://generativelanguage.googleapis.com",
     geminiCodeAssist: "https://cloudcode-pa.googleapis.com",
     vertex: "https://us-central1-aiplatform.googleapis.com",
+    bedrock: "https://bedrock-runtime.us-east-1.amazonaws.com",
   };
 
   it("routes anthropic paths to anthropic upstream", () => {
@@ -324,5 +372,21 @@ describe("resolveTargetUrl", () => {
       "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/my-project/locations/global/publishers/google/models/gemini-2.0-flash:generateContent",
     );
     assert.equal(result.provider, "vertex");
+  });
+
+  it("routes Bedrock invoke paths to bedrock upstream", () => {
+    const result = resolveTargetUrl(
+      {
+        pathname: "/model/anthropic.claude-3-5-sonnet-20241022-v2:0/invoke",
+      },
+      {},
+      upstreams,
+    );
+    assert.equal(
+      result.targetUrl,
+      "https://bedrock-runtime.us-east-1.amazonaws.com/model/anthropic.claude-3-5-sonnet-20241022-v2:0/invoke",
+    );
+    assert.equal(result.provider, "bedrock");
+    assert.equal(result.apiFormat, "anthropic-messages");
   });
 });

@@ -2,6 +2,7 @@
 
 export type Provider =
   | "anthropic"
+  | "bedrock"
   | "openai"
   | "chatgpt"
   | "gemini"
@@ -128,6 +129,7 @@ export interface Upstreams {
   gemini: string;
   geminiCodeAssist: string;
   vertex: string;
+  bedrock: string;
 }
 
 export interface ResolveTargetResult {

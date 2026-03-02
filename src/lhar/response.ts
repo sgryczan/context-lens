@@ -1,3 +1,5 @@
+import { normalizeBedrockModelId } from "../core/models.js";
+
 export interface ParsedResponseUsage {
   inputTokens: number;
   outputTokens: number;
@@ -68,7 +70,11 @@ export function parseResponseUsage(responseData: any): ParsedResponseUsage {
   // Streaming response: scan SSE chunks for usage
   if (responseData.streaming && typeof responseData.chunks === "string") {
     result.stream = true;
-    return parseStreamingUsage(responseData.chunks, result);
+    const streamResult = parseStreamingUsage(responseData.chunks, result);
+    if (streamResult.model) {
+      streamResult.model = normalizeBedrockModelId(streamResult.model);
+    }
+    return streamResult;
   }
 
   // Non-streaming response
@@ -120,6 +126,10 @@ export function parseResponseUsage(responseData: any): ParsedResponseUsage {
     result.finishReasons = geminiResp.candidates
       .map((c: any) => c.finishReason)
       .filter(Boolean);
+  }
+
+  if (result.model) {
+    result.model = normalizeBedrockModelId(result.model);
   }
 
   return result;
