@@ -129,6 +129,7 @@ export interface Upstreams {
   gemini: string;
   geminiCodeAssist: string;
   vertex: string;
+  bedrock: string;
 }
 
 export interface ResolveTargetResult {

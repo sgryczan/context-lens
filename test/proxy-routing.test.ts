@@ -5,8 +5,8 @@ import {
   classifyRequest,
   extractSource,
   resolveTargetUrl,
-  type Upstreams,
 } from "@contextio/core";
+import type { Upstreams } from "../src/types.js";
 
 const DEFAULT_UPSTREAMS: Upstreams = {
   openai: "https://api.openai.com",
@@ -15,6 +15,7 @@ const DEFAULT_UPSTREAMS: Upstreams = {
   gemini: "https://generativelanguage.googleapis.com",
   geminiCodeAssist: "https://cloudcode-pa.googleapis.com",
   vertex: "https://us-central1-aiplatform.googleapis.com",
+  bedrock: "https://bedrock-runtime.us-east-1.amazonaws.com",
 };
 
 describe("proxy/routing", () => {

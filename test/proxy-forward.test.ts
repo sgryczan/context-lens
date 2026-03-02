@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import zlib from "node:zlib";
-import type { Upstreams } from "@contextio/core";
 import { createProxyHandler } from "@contextio/proxy";
 import type { CaptureData } from "../src/proxy/capture.js";
+import type { Upstreams } from "../src/types.js";
 
 // --- Test infrastructure ---
 
@@ -149,6 +149,7 @@ describe("proxy/forward", () => {
       gemini: base,
       geminiCodeAssist: base,
       vertex: base,
+      bedrock: base,
     };
 
     handler = createProxyHandler({
