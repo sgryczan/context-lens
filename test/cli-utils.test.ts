@@ -127,6 +127,13 @@ describe("cli-utils", () => {
     assert.equal(parsed.useBedrock, false);
   });
 
+  it("recognizes --bedrock without a command", () => {
+    const result = parseCliArgs(["--bedrock"]);
+    assert.equal(result.useBedrock, true);
+    assert.equal(result.commandName, undefined);
+    assert.equal(result.error, undefined);
+  });
+
   it("combines --bedrock with other flags", () => {
     const parsed = parseCliArgs([
       "--bedrock",
