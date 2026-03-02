@@ -135,6 +135,22 @@ if (parsedArgs.commandName === "analyze") {
       needsMitm: true,
     };
   }
+  // Bedrock override: when --bedrock flag or Bedrock env vars are set,
+  // switch Claude to MITM mode (SigV4 signing breaks with reverse proxy)
+  const useBedrock =
+    parsedArgs.useBedrock ||
+    process.env.CLAUDE_CODE_USE_BEDROCK === "1" ||
+    !!process.env.ANTHROPIC_BEDROCK_BASE_URL;
+  if (useBedrock && commandName === "claude") {
+    toolConfig = {
+      ...toolConfig,
+      childEnv: {
+        https_proxy: CLI_CONSTANTS.MITM_PROXY_URL,
+        SSL_CERT_FILE: "", // filled in below with mitmproxy CA cert path
+      },
+      needsMitm: true,
+    };
+  }
   if (noUi && toolConfig.needsMitm) {
     console.error(
       "Error: --no-ui is not supported for this command because mitm capture requires the analysis ingest API on :4041.",

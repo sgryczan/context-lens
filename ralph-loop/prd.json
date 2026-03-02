@@ -86,7 +86,7 @@
         "pnpm test passes"
       ],
       "priority": 6,
-      "passes": false,
+      "passes": true,
       "notes": "DRY up the normalization from US-003. The helper should be: if the ID contains 'anthropic.' then strip region prefix, vendor prefix, version suffix. Otherwise return unchanged. This ensures standard Anthropic model IDs (claude-3-5-sonnet-20241022) pass through."
     },
     {
@@ -100,7 +100,7 @@
         "pnpm test passes"
       ],
       "priority": 7,
-      "passes": false,
+      "passes": true,
       "notes": "The auto-detection logic goes in src/cli.ts (or wherever tool config is resolved after initial lookup from TOOL_CONFIG). Check process.env.CLAUDE_CODE_USE_BEDROCK === '1' || process.env.ANTHROPIC_BEDROCK_BASE_URL. When triggered, override the claude config: { childEnv: { https_proxy: MITM_PROXY_URL, SSL_CERT_FILE: '' }, extraArgs: [], serverEnv: {}, needsMitm: true }. The --bedrock flag goes in parseCliArgs() and sets a useBedrock field."
     },
     {

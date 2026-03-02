@@ -113,3 +113,30 @@ Bedrock uses SigV4 request signing tied to the destination host, so reverse prox
   - No TypeScript test changes needed — mitm_addon.py is Python and tested independently; the pnpm test suite validates the TS codebase isn't broken
   - Build: 516 tests, all passing
 ---
+
+## 2026-03-02 - US-006
+- Created shared `normalizeBedrockModelId()` helper in src/core/models.ts — detects Bedrock IDs by checking for "anthropic." substring, strips region prefix, vendor prefix, and version suffix
+- Exported from src/core.ts barrel
+- Refactored src/core/parse.ts to use the shared helper instead of inline regex chain
+- Added normalization to src/lhar/response.ts in both non-streaming and streaming code paths of parseResponseUsage()
+- Added 10 new tests in test/lhar.test.ts: 6 for normalizeBedrockModelId helper (3 format variants + 3 pass-through cases), 4 for response normalization (non-streaming, region prefix, streaming, standard pass-through)
+- Files changed: src/core/models.ts, src/core.ts, src/core/parse.ts, src/lhar/response.ts, test/lhar.test.ts
+- **Learnings:**
+  - The helper uses `modelId.includes("anthropic.")` as the guard so standard Anthropic IDs (which don't contain "anthropic.") pass through unchanged — this is cleaner than checking provider context
+  - Response normalization must be applied in both non-streaming return and streaming return paths — the streaming path delegates to parseStreamingUsage() which returns directly, so normalization must be applied to its result
+  - Build: 526 tests, all passing
+---
+
+## 2026-03-02 - US-007
+- Added `useBedrock: boolean` field to `ParsedCliArgs` interface in src/cli-utils.ts
+- Added `--bedrock` flag parsing in `parseCliArgs()` — sets `useBedrock = true`
+- Added Bedrock env var auto-detection in src/cli.ts: checks `parsedArgs.useBedrock`, `CLAUDE_CODE_USE_BEDROCK=1`, or `ANTHROPIC_BEDROCK_BASE_URL` — when triggered and command is 'claude', overrides config to MITM mode
+- Updated help text with Bedrock examples and `--bedrock` global option
+- Added 3 new tests in test/cli-utils.test.ts: --bedrock flag parsing, default false, combined with other flags
+- Files changed: src/cli-utils.ts, src/cli.ts, test/cli-utils.test.ts
+- **Learnings:**
+  - `ParsedCliArgs` is a non-optional boolean interface — `useBedrock` must be included in ALL return paths (5 error paths + 1 success path)
+  - The Bedrock override in cli.ts follows the same pattern as the pi MITM override — placed right after it
+  - Env var detection (`process.env.*`) goes in cli.ts (not cli-utils.ts) because cli-utils.ts is unit-testable without process.env side effects
+  - Build: 529 tests, all passing
+---

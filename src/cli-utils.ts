@@ -36,6 +36,7 @@ export interface ParsedCliArgs {
   noUi: boolean;
   noUpdateCheck: boolean;
   useMitm: boolean;
+  useBedrock: boolean;
   privacyLevel?: string;
   redactPreset?: RedactPreset;
   rehydrate?: boolean;
@@ -169,6 +170,7 @@ export function parseCliArgs(args: string[]): ParsedCliArgs {
   let noUi = false;
   let noUpdateCheck = false;
   let useMitm = false;
+  let useBedrock = false;
   let privacyLevel: string | undefined;
   let redactPreset: RedactPreset | undefined;
   let rehydrate = false;
@@ -209,6 +211,10 @@ export function parseCliArgs(args: string[]): ParsedCliArgs {
       useMitm = true;
       continue;
     }
+    if (arg === "--bedrock") {
+      useBedrock = true;
+      continue;
+    }
     if (arg === "--redact") {
       redactPreset = "secrets";
       continue;
@@ -227,6 +233,7 @@ export function parseCliArgs(args: string[]): ParsedCliArgs {
           noUi,
           noUpdateCheck,
           useMitm,
+          useBedrock,
           commandArguments: [],
           error: `Error: Invalid redact preset '${value}'. Must be one of: ${KNOWN_REDACT_PRESETS.join(", ")}`,
         };
@@ -243,6 +250,7 @@ export function parseCliArgs(args: string[]): ParsedCliArgs {
           noUi,
           noUpdateCheck,
           useMitm,
+          useBedrock,
           commandArguments: [],
           error:
             "Error: Missing value for --privacy. Expected one of: minimal, standard, full",
@@ -263,6 +271,7 @@ export function parseCliArgs(args: string[]): ParsedCliArgs {
       noUi,
       noUpdateCheck,
       useMitm,
+      useBedrock,
       commandArguments: [],
       error: `Error: Unknown option '${arg}'. Run 'context-lens --help' for usage.`,
     };
@@ -276,6 +285,7 @@ export function parseCliArgs(args: string[]): ParsedCliArgs {
       noUi,
       noUpdateCheck,
       useMitm,
+      useBedrock,
       commandArguments: [],
       error: `Error: Invalid privacy level '${privacyLevel}'. Must be one of: ${KNOWN_PRIVACY_LEVELS.join(", ")}`,
     };
@@ -295,6 +305,7 @@ export function parseCliArgs(args: string[]): ParsedCliArgs {
       noUi,
       noUpdateCheck,
       useMitm,
+      useBedrock,
       privacyLevel,
       redactPreset,
       rehydrate,
@@ -310,6 +321,7 @@ export function parseCliArgs(args: string[]): ParsedCliArgs {
     noUi,
     noUpdateCheck,
     useMitm,
+    useBedrock,
     privacyLevel,
     redactPreset,
     rehydrate,
@@ -339,6 +351,8 @@ export function formatHelpText(): string {
     "  context-lens gm",
     "  context-lens bryti",
     "  context-lens --privacy=minimal aider --model claude-sonnet-4",
+    "  context-lens claude                      (auto-detects Bedrock from env vars)",
+    "  context-lens --bedrock claude             (explicit Bedrock MITM mode)",
     "  context-lens -- python my_agent.py",
     "  context-lens doctor",
     "  context-lens stop",
@@ -355,6 +369,7 @@ export function formatHelpText(): string {
     "  --no-ui                Run proxy only (no analysis/web UI server)",
     "  --no-update-check      Skip npm update check for this run",
     "  --mitm                 Use mitmproxy for interception instead of base URL override (pi only)",
+    "  --bedrock              Force MITM mode for Bedrock (auto-detected from CLAUDE_CODE_USE_BEDROCK or ANTHROPIC_BEDROCK_BASE_URL)",
     "  --redact[=preset]      Strip sensitive data before capture (experimental). Preset: secrets|pii|strict (default: secrets)",
     "  --rehydrate            With --redact: restore original values in responses (off by default)",
     "",
@@ -376,6 +391,7 @@ export function formatHelpText(): string {
     "  - No command starts standalone mode (proxy + analysis/web UI by default).",
     "  - 'codex', 'cline', and 'opencode' use mitmproxy for HTTPS interception (requires mitmproxy; install: pipx install mitmproxy).",
     "  - 'cline' with Anthropic OAuth routes through api.cline.bot; mitmproxy intercepts that traffic.",
+    "  - 'claude' with Bedrock (CLAUDE_CODE_USE_BEDROCK=1 or --bedrock) uses mitmproxy because SigV4 signing breaks with reverse proxy.",
     "  - 'pi --mitm' uses mitmproxy for full interception, useful for subscription-based models (openai-codex provider).",
     "  - 'doctor' is a local diagnostics command.",
     "  - 'background' manages detached proxy/web-ui processes.",
