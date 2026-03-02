@@ -1,4 +1,5 @@
 import type { ContentBlock, ContextInfo, ParsedMessage } from "../types.js";
+import { normalizeBedrockModelId } from "./models.js";
 import { estimateTokens } from "./tokens.js";
 
 /**
@@ -392,10 +393,7 @@ export function parseContextInfo(
 
   // Normalize Bedrock model IDs: strip region prefix, vendor prefix, version suffix
   if (provider === "bedrock") {
-    info.model = info.model
-      .replace(/^[a-z]{2}\./, "")
-      .replace(/^anthropic\./, "")
-      .replace(/-v\d+:\d+$/, "");
+    info.model = normalizeBedrockModelId(info.model);
   }
 
   info.totalTokens = info.systemTokens + info.toolsTokens + info.messagesTokens;

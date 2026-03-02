@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 
-import { parseContextInfo } from "../src/core.js";
+import { normalizeBedrockModelId, parseContextInfo } from "../src/core.js";
 import { normalizeComposition } from "../src/lhar/composition.js";
 import {
   analyzeComposition,
@@ -549,6 +549,94 @@ describe("parseResponseUsage", () => {
     const usage = parseResponseUsage({ raw: "not json" });
     assert.equal(usage.inputTokens, 0);
     assert.equal(usage.outputTokens, 0);
+  });
+});
+
+// --- normalizeBedrockModelId ---
+
+describe("normalizeBedrockModelId", () => {
+  it("strips region prefix, vendor prefix, and version suffix", () => {
+    assert.equal(
+      normalizeBedrockModelId("us.anthropic.claude-sonnet-4-20250514-v1:0"),
+      "claude-sonnet-4-20250514",
+    );
+  });
+
+  it("strips vendor prefix and version suffix without region", () => {
+    assert.equal(
+      normalizeBedrockModelId("anthropic.claude-3-5-sonnet-20241022-v2:0"),
+      "claude-3-5-sonnet-20241022",
+    );
+  });
+
+  it("strips vendor prefix and v1 suffix", () => {
+    assert.equal(
+      normalizeBedrockModelId("anthropic.claude-3-haiku-20240307-v1:0"),
+      "claude-3-haiku-20240307",
+    );
+  });
+
+  it("passes through standard Anthropic model IDs unchanged", () => {
+    assert.equal(
+      normalizeBedrockModelId("claude-sonnet-4-20250514"),
+      "claude-sonnet-4-20250514",
+    );
+  });
+
+  it("passes through non-Anthropic model IDs unchanged", () => {
+    assert.equal(normalizeBedrockModelId("gpt-4o"), "gpt-4o");
+  });
+
+  it("passes through unknown string unchanged", () => {
+    assert.equal(normalizeBedrockModelId("unknown"), "unknown");
+  });
+});
+
+// --- parseResponseUsage Bedrock normalization ---
+
+describe("parseResponseUsage Bedrock model normalization", () => {
+  it("normalizes Bedrock model ID in non-streaming response", () => {
+    const resp = {
+      model: "anthropic.claude-3-5-sonnet-20241022-v2:0",
+      stop_reason: "end_turn",
+      usage: { input_tokens: 500, output_tokens: 100 },
+    };
+    const usage = parseResponseUsage(resp);
+    assert.equal(usage.model, "claude-3-5-sonnet-20241022");
+  });
+
+  it("normalizes Bedrock model ID with region prefix in non-streaming response", () => {
+    const resp = {
+      model: "us.anthropic.claude-sonnet-4-20250514-v1:0",
+      stop_reason: "end_turn",
+      usage: { input_tokens: 500, output_tokens: 100 },
+    };
+    const usage = parseResponseUsage(resp);
+    assert.equal(usage.model, "claude-sonnet-4-20250514");
+  });
+
+  it("normalizes Bedrock model ID in streaming response", () => {
+    const chunks = [
+      "event: message_start",
+      'data: {"type":"message_start","message":{"model":"anthropic.claude-3-haiku-20240307-v1:0","usage":{"input_tokens":800}}}',
+      "",
+      "event: message_delta",
+      'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":50}}',
+      "",
+      "data: [DONE]",
+    ].join("\n");
+    const usage = parseResponseUsage({ streaming: true, chunks });
+    assert.equal(usage.model, "claude-3-haiku-20240307");
+  });
+
+  it("leaves standard model IDs unchanged in response", () => {
+    const resp = {
+      model: "claude-sonnet-4-20250514",
+      stop_reason: "end_turn",
+      usage: { input_tokens: 500, output_tokens: 100 },
+    };
+    const usage = parseResponseUsage(resp);
+    assert.equal(usage.model, "claude-sonnet-4-20250514");
   });
 });
 

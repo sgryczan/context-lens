@@ -20,6 +20,7 @@ export { computeHealthScore } from "./core/health.js";
 export {
   estimateCost,
   getContextLimit,
+  normalizeBedrockModelId,
 } from "./core/models.js";
 export { parseContextInfo } from "./core/parse.js";
 export {
