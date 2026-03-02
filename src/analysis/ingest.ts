@@ -29,6 +29,11 @@ export function ingestCapture(store: Store, capture: CaptureData): void {
       const modelMatch = capture.path.match(/\/models\/([^/:]+)/);
       if (modelMatch) body.model = modelMatch[1];
     }
+    // Bedrock: model is in the URL path /model/{modelId}/invoke
+    if (provider === "bedrock" && !body.model) {
+      const modelMatch = capture.path.match(/\/model\/([^/]+)\//);
+      if (modelMatch) body.model = modelMatch[1];
+    }
     contextInfo = parseContextInfo(provider, body, apiFormat);
   } else {
     // Non-JSON request: create a raw contextInfo

@@ -245,6 +245,62 @@ describe("parseContextInfo", () => {
     });
   });
 
+  describe("bedrock format", () => {
+    it("parses bedrock request using anthropic body format", () => {
+      const info = parseContextInfo(
+        "bedrock",
+        anthropicBasic,
+        "anthropic-messages",
+      );
+      assert.equal(info.provider, "bedrock");
+      assert.equal(info.systemPrompts.length, 1);
+      assert.ok(info.systemPrompts[0].content.includes("helpful assistant"));
+      assert.equal(info.tools.length, 1);
+      assert.equal((info.tools[0] as any).name, "get_weather");
+      assert.equal(info.messages.length, 3);
+      assert.equal(info.messages[0].role, "user");
+      assert.ok(info.systemTokens > 0);
+      assert.ok(info.toolsTokens > 0);
+      assert.ok(info.messagesTokens > 0);
+    });
+
+    it("normalizes bedrock model ID with region and vendor prefix", () => {
+      const body = {
+        model: "us.anthropic.claude-sonnet-4-20250514-v1:0",
+        messages: [{ role: "user", content: "Hi" }],
+      };
+      const info = parseContextInfo("bedrock", body, "anthropic-messages");
+      assert.equal(info.model, "claude-sonnet-4-20250514");
+    });
+
+    it("normalizes bedrock model ID with vendor prefix only", () => {
+      const body = {
+        model: "anthropic.claude-3-5-sonnet-20241022-v2:0",
+        messages: [{ role: "user", content: "Hi" }],
+      };
+      const info = parseContextInfo("bedrock", body, "anthropic-messages");
+      assert.equal(info.model, "claude-3-5-sonnet-20241022");
+    });
+
+    it("normalizes bedrock model ID with region prefix and v1 suffix", () => {
+      const body = {
+        model: "anthropic.claude-3-haiku-20240307-v1:0",
+        messages: [{ role: "user", content: "Hi" }],
+      };
+      const info = parseContextInfo("bedrock", body, "anthropic-messages");
+      assert.equal(info.model, "claude-3-haiku-20240307");
+    });
+
+    it("does not normalize standard model IDs", () => {
+      const body = {
+        model: "claude-3-5-sonnet-20241022",
+        messages: [{ role: "user", content: "Hi" }],
+      };
+      const info = parseContextInfo("anthropic", body, "anthropic-messages");
+      assert.equal(info.model, "claude-3-5-sonnet-20241022");
+    });
+  });
+
   describe("empty body", () => {
     it("returns zeroed info for empty body", () => {
       const info = parseContextInfo("unknown", {}, "unknown");
