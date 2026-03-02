@@ -64,6 +64,11 @@ if (
 ) {
   void checkForUpdate(VERSION);
 }
+// Bedrock detection: --bedrock flag or env vars — computed once for both standalone and command modes
+const useBedrock =
+  parsedArgs.useBedrock ||
+  process.env.CLAUDE_CODE_USE_BEDROCK === "1" ||
+  !!process.env.ANTHROPIC_BEDROCK_BASE_URL;
 if (parsedArgs.commandName === "analyze") {
   void runAnalyze(parsedArgs.commandArguments).then((exitCode) =>
     process.exit(exitCode),
@@ -137,10 +142,6 @@ if (parsedArgs.commandName === "analyze") {
   }
   // Bedrock override: when --bedrock flag or Bedrock env vars are set,
   // switch Claude to MITM mode (SigV4 signing breaks with reverse proxy)
-  const useBedrock =
-    parsedArgs.useBedrock ||
-    process.env.CLAUDE_CODE_USE_BEDROCK === "1" ||
-    !!process.env.ANTHROPIC_BEDROCK_BASE_URL;
   if (useBedrock && commandName === "claude") {
     toolConfig = {
       ...toolConfig,
