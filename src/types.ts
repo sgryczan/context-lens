@@ -2,6 +2,7 @@
 
 export type Provider =
   | "anthropic"
+  | "bedrock"
   | "openai"
   | "chatgpt"
   | "gemini"
