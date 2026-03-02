@@ -20,8 +20,10 @@ Environment variables:
   CONTEXT_LENS_SESSION_ID  - session ID for grouping (default: "")
 """
 
+import base64
 import json
 import os
+import struct
 import time
 import urllib.request
 from mitmproxy import http
@@ -49,6 +51,8 @@ CAPTURE_PATTERNS = [
     ("api.anthropic.com", "/v1/messages", "anthropic", None),
     # Gemini API
     ("generativelanguage.googleapis.com", "/v1", "gemini", None),
+    # AWS Bedrock — source left as None so detectSource identifies the tool
+    ("bedrock-runtime.", "/model/", "bedrock", None),
 ]
 
 # Catch-all path patterns: match any host with these path substrings.
@@ -87,6 +91,8 @@ def _detect_api_format(path: str) -> str:
         return "chat-completions"
     if "/v1/messages" in path:
         return "anthropic-messages"
+    if "/model/" in path and ("/invoke" in path or "/converse" in path):
+        return "anthropic-messages"
     return "unknown"
 
 
@@ -97,6 +103,39 @@ def _parse_sse_response(text: str) -> str:
     handles SSE parsing during ingestion.
     """
     return text
+
+
+def _parse_aws_eventstream(raw_bytes: bytes) -> str:
+    """Parse AWS EventStream binary format into SSE text lines.
+
+    EventStream frame layout:
+      [4B total_len][4B headers_len][4B prelude_crc][headers][payload][4B message_crc]
+
+    The payload is JSON containing a 'bytes' field with base64-encoded
+    SSE event data (the same Anthropic SSE format used by the Messages API).
+    """
+    lines = []
+    offset = 0
+    while offset + 12 <= len(raw_bytes):
+        total_len = struct.unpack(">I", raw_bytes[offset:offset + 4])[0]
+        headers_len = struct.unpack(">I", raw_bytes[offset + 4:offset + 8])[0]
+        # Skip prelude CRC (4 bytes at offset+8)
+        # Headers start at offset+12, payload starts after headers
+        payload_offset = offset + 12 + headers_len
+        # Payload ends 4 bytes before end of frame (message CRC)
+        payload_end = offset + total_len - 4
+        if payload_end > payload_offset:
+            payload = raw_bytes[payload_offset:payload_end]
+            try:
+                payload_json = json.loads(payload)
+                encoded = payload_json.get("bytes", "")
+                if encoded:
+                    decoded = base64.b64decode(encoded).decode("utf-8")
+                    lines.append(decoded)
+            except (json.JSONDecodeError, ValueError, UnicodeDecodeError):
+                pass
+        offset += total_len
+    return "\n".join(lines)
 
 
 def response(flow: http.HTTPFlow):
@@ -123,7 +162,10 @@ def response(flow: http.HTTPFlow):
         response_text = flow.response.get_text()
         content_type = flow.response.headers.get("content-type", "")
 
-        if "text/event-stream" in content_type or response_text.startswith("event:"):
+        if "application/vnd.amazon.eventstream" in content_type:
+            response_body = _parse_aws_eventstream(flow.response.raw_content)
+            response_is_streaming = True
+        elif "text/event-stream" in content_type or response_text.startswith("event:"):
             response_body = response_text
             response_is_streaming = True
         else:
@@ -151,7 +193,11 @@ def response(flow: http.HTTPFlow):
                       "x-ratelimit-remaining-requests", "x-ratelimit-limit-tokens",
                       "x-ratelimit-remaining-tokens", "openai-processing-ms",
                       "anthropic-ratelimit-requests-limit",
-                      "anthropic-ratelimit-requests-remaining"):
+                      "anthropic-ratelimit-requests-remaining",
+                      "x-amzn-requestid",
+                      "x-amzn-bedrock-invocation-latency",
+                      "x-amzn-bedrock-input-token-count",
+                      "x-amzn-bedrock-output-token-count"):
             safe_response_headers[k] = v
 
     capture = {
