@@ -331,9 +331,11 @@ export function computeFingerprint(
       .slice(0, 16);
   }
 
-  if (!systemText && !promptText) return null;
+  const cwd =
+    workingDirectory ?? extractWorkingDirectory(contextInfo, rawBody ?? null);
+  if (!systemText && !promptText && !cwd) return null;
   return createHash("sha256")
-    .update(`${systemText}\0${promptText}`)
+    .update(`${cwd ?? ""}\0${systemText}\0${promptText}`)
     .digest("hex")
     .slice(0, 16);
 }
