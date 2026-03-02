@@ -64,6 +64,11 @@ if (
 ) {
   void checkForUpdate(VERSION);
 }
+// Bedrock detection: --bedrock flag or env vars — computed once for both standalone and command modes
+const useBedrock =
+  parsedArgs.useBedrock ||
+  process.env.CLAUDE_CODE_USE_BEDROCK === "1" ||
+  !!process.env.ANTHROPIC_BEDROCK_BASE_URL;
 if (parsedArgs.commandName === "analyze") {
   void runAnalyze(parsedArgs.commandArguments).then((exitCode) =>
     process.exit(exitCode),
@@ -77,6 +82,13 @@ if (parsedArgs.commandName === "analyze") {
     (exitCode) => process.exit(exitCode),
   );
 } else if (!parsedArgs.commandName) {
+  // --no-ui + --bedrock is invalid: MITM capture requires the analysis ingest API
+  if (parsedArgs.noUi && useBedrock) {
+    console.error(
+      "Error: --no-ui is not supported for this command because mitm capture requires the analysis ingest API on :4041.",
+    );
+    process.exit(1);
+  }
   if (parsedArgs.noUi) {
     // Standalone mode (no UI): start proxy only
     const proxyPath = join(__dirname, "proxy", "server.js");
@@ -104,7 +116,9 @@ if (parsedArgs.commandName === "analyze") {
       stdio: "inherit",
       env: { ...process.env },
     });
+    let mitmProcess: ChildProcess | null = null;
     function shutdownStandalone(code: number): void {
+      if (mitmProcess && !mitmProcess.killed) mitmProcess.kill();
       if (!proxy.killed) proxy.kill();
       if (!analysis.killed) analysis.kill();
       process.exit(code);
@@ -113,6 +127,68 @@ if (parsedArgs.commandName === "analyze") {
     analysis.on("exit", (code) => shutdownStandalone(code || 0));
     process.on("SIGINT", () => shutdownStandalone(0));
     process.on("SIGTERM", () => shutdownStandalone(0));
+
+    if (useBedrock) {
+      const addonPath = CLI_CONSTANTS.MITM_ADDON_PATH;
+      console.log(
+        "🔒 Starting mitmproxy (forward proxy for HTTPS interception)...",
+      );
+      mitmProcess = spawn(
+        "mitmdump",
+        [
+          "-s",
+          addonPath,
+          "--quiet",
+          "--listen-port",
+          String(CLI_CONSTANTS.MITM_PORT),
+        ],
+        {
+          stdio: ["ignore", "pipe", "pipe"],
+          env: {
+            ...process.env,
+            CONTEXT_LENS_SOURCE: "standalone",
+            CONTEXT_LENS_SESSION_ID: randomBytes(4).toString("hex"),
+          },
+        },
+      );
+
+      mitmProcess.on("error", (err) => {
+        console.error("Failed to start mitmproxy:", err.message);
+        console.error("Install it: pipx install mitmproxy");
+        shutdownStandalone(1);
+      });
+
+      mitmProcess.on("exit", (code) => {
+        if (!mitmReady) {
+          console.error("mitmproxy exited unexpectedly");
+          shutdownStandalone(code || 1);
+        }
+      });
+
+      // Poll until mitmproxy is accepting connections
+      let mitmReady = false;
+      const pollMitm = setInterval(() => {
+        const socket = net.connect(
+          { port: CLI_CONSTANTS.MITM_PORT, host: "localhost" },
+          () => {
+            socket.end();
+            if (!mitmReady) {
+              mitmReady = true;
+              clearInterval(pollMitm);
+              console.log(
+                `🔒 mitmproxy listening on port ${CLI_CONSTANTS.MITM_PORT}`,
+              );
+              console.log(
+                "Point your tool at the MITM proxy: https_proxy=http://localhost:8080",
+              );
+            }
+          },
+        );
+        socket.on("error", () => {}); // not ready yet
+        socket.setTimeout(500, () => socket.destroy());
+      }, 200);
+    }
+
     // Prevent early exit
     process.stdin.resume();
   }
@@ -137,10 +213,6 @@ if (parsedArgs.commandName === "analyze") {
   }
   // Bedrock override: when --bedrock flag or Bedrock env vars are set,
   // switch Claude to MITM mode (SigV4 signing breaks with reverse proxy)
-  const useBedrock =
-    parsedArgs.useBedrock ||
-    process.env.CLAUDE_CODE_USE_BEDROCK === "1" ||
-    !!process.env.ANTHROPIC_BEDROCK_BASE_URL;
   if (useBedrock && commandName === "claude") {
     toolConfig = {
       ...toolConfig,
