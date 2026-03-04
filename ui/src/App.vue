@@ -212,6 +212,7 @@ watch(
 onMounted(async () => {
   try {
     store.initializeDensity()
+    store.initializeWaitForDetail()
     await store.load()
     if (!window.location.hash) {
       window.location.hash = HASH_SESSIONS
