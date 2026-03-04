@@ -29,6 +29,7 @@ export type DensityMode = 'comfortable' | 'compact'
 export type SelectionMode = 'live' | 'pinned'
 
 const DENSITY_STORAGE_KEY = 'context-lens-density'
+const WAIT_FOR_DETAIL_STORAGE_KEY = 'context-lens-messages-wait-for-detail'
 
 export const useSessionStore = defineStore('session', () => {
   // --- Data ---
@@ -68,6 +69,7 @@ export const useSessionStore = defineStore('session', () => {
 
   // Messages tab persistent state
   const messagesMode = ref<'all' | 'main'>('main')
+  const messagesWaitForDetail = ref(false)
 
   // Timeline tab persistent state
   const timelineMode = ref<'all' | 'main'>('main')
@@ -489,6 +491,19 @@ export const useSessionStore = defineStore('session', () => {
     applyDensityToDom(mode)
   }
 
+  function initializeWaitForDetail() {
+    if (typeof window === 'undefined') return
+    const stored = window.localStorage.getItem(WAIT_FOR_DETAIL_STORAGE_KEY)
+    messagesWaitForDetail.value = stored === 'true'
+  }
+
+  function setMessagesWaitForDetail(val: boolean) {
+    messagesWaitForDetail.value = val
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(WAIT_FOR_DETAIL_STORAGE_KEY, String(val))
+    }
+  }
+
   // --- Tags ---
 
   async function loadTags() {
@@ -600,6 +615,7 @@ export const useSessionStore = defineStore('session', () => {
     messageFocusOpenDetail,
     messageFocusFile,
     messagesMode,
+    messagesWaitForDetail,
     timelineMode,
     timelineStackMode,
     timelineHiddenLegendKeys,
@@ -649,6 +665,8 @@ export const useSessionStore = defineStore('session', () => {
     entryDetailVersion,
     initializeDensity,
     setDensity,
+    initializeWaitForDetail,
+    setMessagesWaitForDetail,
     deleteSession,
     reset,
 
