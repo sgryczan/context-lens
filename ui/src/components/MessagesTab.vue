@@ -49,6 +49,13 @@ const messages = computed(() => {
   return entry.value.contextInfo.messages || []
 })
 
+// When "Full Detail" is on, block rendering until uncompacted detail is loaded
+const awaitingDetail = computed(() => {
+  if (!store.messagesWaitForDetail || !entry.value) return false
+  void store.entryDetailVersion // reactive dependency
+  return store.getEntryDetail(entry.value.id) === null
+})
+
 // Latest (live) entry's messages, used to show "future" messages grayed out
 const latestEntry = computed(() => {
   if (!session.value || session.value.entries.length === 0) return null
@@ -844,9 +851,15 @@ watch(
               <button :class="{ on: store.messagesMode === 'main' }" @click="store.messagesMode = 'main'">Main</button>
               <button :class="{ on: store.messagesMode === 'all' }" @click="store.messagesMode = 'all'">All</button>
             </div>
+            <button class="overlay-toggle" :class="{ on: store.messagesWaitForDetail }" @click="store.setMessagesWaitForDetail(!store.messagesWaitForDetail)">
+              Full Detail
+            </button>
           </div>
 
-          <template v-if="viewMode === 'category'">
+          <div v-if="awaitingDetail" class="awaiting-detail">
+            Loading full message detail…
+          </div>
+          <template v-else-if="viewMode === 'category'">
           <div v-if="heaviestMessages.length > 0" class="heavy-strip">
             <div class="heavy-title">Top heavy messages</div>
             <div class="heavy-actions">
@@ -1481,6 +1494,28 @@ watch(
 .focus-file-count {
   color: var(--text-ghost);
   font-size: var(--text-xs);
+}
+
+.overlay-toggle {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  background: var(--bg-raised);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: color 0.12s, background 0.12s;
+}
+.overlay-toggle:hover { color: var(--text-secondary); background: var(--bg-hover); }
+.overlay-toggle.on { color: var(--accent-blue); background: var(--accent-blue-dim); }
+
+.awaiting-detail {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
 }
 
 </style>
