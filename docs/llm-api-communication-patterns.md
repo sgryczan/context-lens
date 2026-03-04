@@ -302,6 +302,109 @@ Tool results get heavier weight (25) than thinking (10) because:
 
 ### Compaction Detection
 
-Context Lens detects compaction events when `currentTokens < previousTokens
-× 0.7` — the context window suddenly shrank, meaning the client
-summarized/truncated the conversation history to stay within limits.
+Since the API is stateless and context should only grow (each call adds to
+the conversation), a **decrease in token count** between consecutive same-agent
+API calls means the client removed content — i.e., compacted the context.
+
+Context Lens cannot directly observe the client performing compaction. It
+infers it purely from the token count signal.
+
+#### Detection: LHAR Record Building (`src/lhar/record.ts`)
+
+At ingestion time, each entry is compared to the previous entry **from the
+same agent** (main or subagent). The same-agent filter prevents false
+positives from main/subagent context size differences:
+
+```typescript
+// Walk backwards to find previous entry with matching agentKey
+let prevEntry: CapturedEntry | null = null;
+for (let i = convoIndex - 1; i >= 0; i--) {
+    if (convoEntries[i].agentKey === entry.agentKey) {
+        prevEntry = convoEntries[i];
+        break;
+    }
+}
+const prevTokens = prevEntry ? prevEntry.contextInfo.totalTokens : 0;
+const tokensAdded = prevEntry ? ci.totalTokens - prevTokens : null;
+const compactionDetected = tokensAdded !== null && tokensAdded < 0;
+```
+
+Any decrease (`tokensAdded < 0`) sets `compaction_detected: true` on the
+LHAR record. This is a strict check.
+
+#### Health Audit: Growth Rate (`src/core/health.ts`)
+
+The growth rate audit uses a **softer 30% threshold** to avoid flagging
+small decreases from token estimation variance:
+
+```typescript
+if (currentTokens < previousTokens * 0.7) return 40;  // score of 40/100
+```
+
+A compaction scores 40 — not catastrophic, but a yellow flag. The
+description reads: "Compaction detected — context was truncated or
+summarized."
+
+#### Session Analysis: Enrichment (`src/core/session-analysis.ts`)
+
+`findCompactions()` consumes the boolean flag from the LHAR record and
+enriches it with before/after metrics. For each compaction, it walks
+backwards to find the peak token count before the drop:
+
+```typescript
+for (let j = i - 1; j >= 0; j--) {
+    const prev = entries[j];
+    if (agentRole(prev) !== role) continue;
+    if (cumTokens(prev) >= after) {
+        bestBefore = cumTokens(prev);
+        break;
+    }
+}
+```
+
+This produces a `CompactionEvent`:
+
+| Field | Description |
+|---|---|
+| `beforeTokens` | Peak context size before compaction |
+| `afterTokens` | Context size after compaction |
+| `tokensLost` | Absolute difference |
+| `pctLost` | Percentage lost (e.g., 47.3%) |
+
+#### Example
+
+```
+Entry  Tokens   Delta    Flag
+─────  ──────   ──────   ─────────────────────
+  1     25K       —
+  2     35K     +10K
+  3     52K     +17K
+  4     78K     +26K
+  5     95K     +17K     approaching limit
+  6    110K     +15K
+  7     58K     -52K     COMPACTION (110K → 58K, lost 47.3%)
+  8     65K      +7K     growth resumes from new baseline
+  9     80K     +15K
+```
+
+Entry 7 triggers because `58K - 110K = -52K < 0`. The session analysis
+records `{beforeTokens: 110K, afterTokens: 58K, tokensLost: 52K,
+pctLost: 47.3}`.
+
+#### Why Same-Agent Filtering Matters
+
+Without filtering by agent, a main agent entry at 80K followed by a
+subagent entry at 10K (subagents have their own, smaller context) would
+look like a 70K compaction. Comparing same-agent-to-same-agent avoids
+these false positives.
+
+#### Growth Blocks
+
+Compaction events divide the session timeline into **growth blocks** —
+periods of monotonically increasing context between compactions. Each
+block tracks:
+
+- Start/end token counts
+- Number of entries in the block
+- Tokens gained
+- Average growth rate per entry (`ratePerTurn`)
