@@ -147,7 +147,6 @@ if (parsedArgs.commandName === "analyze") {
           env: {
             ...process.env,
             CONTEXT_LENS_SOURCE: "standalone",
-            CONTEXT_LENS_SESSION_ID: randomBytes(4).toString("hex"),
           },
         },
       );

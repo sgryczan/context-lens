@@ -1174,6 +1174,84 @@ describe("Store", () => {
     } catch {}
   });
 
+  it("groups Bedrock requests by fingerprint when no explicit sessionId", () => {
+    const { store, cleanup } = makeStore();
+
+    const systemPrompt = "You are Claude Code, Anthropic's official CLI";
+    const firstUserMsg =
+      "Primary working directory: `/home/user/project-a`\nhelp me";
+    const body1 = {
+      model: "anthropic.claude-sonnet-4-20250514-v1:0",
+      system: systemPrompt,
+      messages: [{ role: "user", content: firstUserMsg }],
+    };
+    const body2 = {
+      model: "anthropic.claude-sonnet-4-20250514-v1:0",
+      system: systemPrompt,
+      messages: [
+        { role: "user", content: firstUserMsg },
+        { role: "assistant", content: "Sure, how can I help?" },
+        { role: "user", content: "second turn" },
+      ],
+    };
+    const bodyDiffCwd = {
+      model: "anthropic.claude-sonnet-4-20250514-v1:0",
+      system: systemPrompt,
+      messages: [
+        {
+          role: "user",
+          content: "Primary working directory: `/home/user/project-b`\nhelp me",
+        },
+      ],
+    };
+
+    const ci1 = parseContextInfo("bedrock", body1, "anthropic-messages");
+    const ci2 = parseContextInfo("bedrock", body2, "anthropic-messages");
+    const ci3 = parseContextInfo("bedrock", bodyDiffCwd, "anthropic-messages");
+
+    const response = {
+      model: "claude-sonnet-4",
+      stop_reason: "end_turn",
+      usage: { input_tokens: 10, output_tokens: 3 },
+    } as any;
+
+    // Pass null as sessionId (7th param) — no explicit session
+    const e1 = store.storeRequest(
+      ci1,
+      response,
+      "standalone",
+      body1,
+      undefined,
+      undefined,
+      null,
+    );
+    const e2 = store.storeRequest(
+      ci2,
+      response,
+      "standalone",
+      body2,
+      undefined,
+      undefined,
+      null,
+    );
+    const e3 = store.storeRequest(
+      ci3,
+      response,
+      "standalone",
+      bodyDiffCwd,
+      undefined,
+      undefined,
+      null,
+    );
+
+    // Same cwd → same conversation
+    assert.equal(e1.conversationId, e2.conversationId);
+    // Different cwd → different conversation
+    assert.notEqual(e1.conversationId, e3.conversationId);
+
+    cleanup();
+  });
+
   it("does not modify entries without image blocks during migration", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "context-lens-test-"));
     const dataDir = path.join(dir, "data");
